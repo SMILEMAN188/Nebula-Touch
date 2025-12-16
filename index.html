@@ -9,7 +9,6 @@
         body { margin: 0; overflow: hidden; background-color: #020207; font-family: 'Helvetica Neue', sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
-        /* UI Overlay styling */
         #ui {
             position: absolute; top: 20px; left: 20px;
             color: rgba(255,255,255,0.8); pointer-events: none; user-select: none; z-index: 10;
@@ -32,7 +31,6 @@
             color: #4db8ff; font-size: 1.5rem; text-align: center; transition: opacity 0.5s;
         }
         
-        /* Essential hidden elements for processing */
         #input_video { display: none; }
         #text_helper_canvas { display: none; }
     </style>
@@ -77,67 +75,49 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- CONFIGURATION ---
-        const PARTICLE_COUNT = 16000; // Total particles. Higher = denser but slower.
+        const PARTICLE_COUNT = 16000; 
         const PARTICLE_SIZE = 0.15;
-        const MORPH_SPEED = 0.07; // 0.01 (slow) to 0.2 (fast)
-        const WORLD_SCALE = 12; // Overall size of shapes
+        const MORPH_SPEED = 0.07; 
+        const WORLD_SCALE = 12;
 
-        // --- GLOBAL STATE ---
         let scene, camera, renderer, particleSystem;
-        // Float32Arrays for high-performance data handling
         let positionsCurrent, positionsTarget, colorsAttribute;
         const clock = new THREE.Clock();
         
-        // Defines the order of shapes and which ones are text vs math
         const shapeDefinitions = [
             { type: 'math', name: 'Sphere' },
             { type: 'math', name: 'Heart' },
-            { type: 'text', name: 'Labu Mithila🫠😘' },
+            { type: 'text', name: 'LABU MITHILA' },
+            { type: 'text', name: 'I L O V E U' },
             { type: 'math', name: 'Rose' },
-            { type: 'text', name: 'sorryyyyyy🥺' },
-            { type: 'text', name: 'cholly😁😘' },
+            { type: 'text', name: 's o r r y y y y y y y y y y y 🥺' },
+            { type: 'text', name: 'Cholly' },
             { type: 'math', name: 'TorusKnot' }
         ];
         let currentShapeIndex = 0;
-        // Cache for calculated text coordinates so we don't regenerate on every switch
         const textPointCache = {}; 
-
-        // Interaction State
         let isHandDetected = false;
-        let pinchDebounce = false; // Prevents rapid-fire switching
-        let expansionFactor = 1.0; // Controlled by hand spread
-        let rotationTarget = { x: 0, y: 0 }; // Controlled by hand position
+        let pinchDebounce = false; 
+        let expansionFactor = 1.0; 
+        let rotationTarget = { x: 0, y: 0 };
         let hueCycleOffset = 0;
 
-
-        // =========================================
-        // --- INITIALIZATION FLOW ---
-        // =========================================
         async function init() {
-            // 1. Setup Three.js environment
             initThreeJS();
             
-            // 2. Pre-calculate the first shape's targets
             await applyShapeByIndex(currentShapeIndex);
             
-            // 3. Start computer vision
             initMediaPipe();
             
-            // 4. Start the main animation loop
             animate();
         }
 
 
-        // =========================================
-        // --- THREE.JS SETUP & PARTICLE SYSTEM ---
-        // =========================================
         function initThreeJS() {
             const canvas = document.createElement('canvas');
             document.body.appendChild(canvas);
 
             scene = new THREE.Scene();
-            // Add aesthetic fog to fade distant particles
             scene.fog = new THREE.FogExp2(0x020207, 0.025);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -145,15 +125,13 @@
 
             renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimize for high-DPI screens
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
 
-            // Create BufferGeometry (essential for performance with many particles)
             const geometry = new THREE.BufferGeometry();
             positionsCurrent = new Float32Array(PARTICLE_COUNT * 3);
             positionsTarget = new Float32Array(PARTICLE_COUNT * 3);
             colorsAttribute = new Float32Array(PARTICLE_COUNT * 3);
 
-            // Initialize randomly dispersed particles
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
                 positionsCurrent[i3] = (Math.random() - 0.5) * 100;
@@ -161,7 +139,6 @@
                 positionsCurrent[i3 + 2] = (Math.random() - 0.5) * 100;
 
                 const color = new THREE.Color();
-                // Initial nice color gradient
                 color.setHSL((i/PARTICLE_COUNT) * 0.5 + 0.5, 0.8, 0.5);
                 colorsAttribute[i3] = color.r;
                 colorsAttribute[i3+1] = color.g;
@@ -171,20 +148,17 @@
             geometry.setAttribute('position', new THREE.BufferAttribute(positionsCurrent, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colorsAttribute, 3));
 
-            // PointsMaterial with additive blending creates the "glowing light" effect
             const material = new THREE.PointsMaterial({
                 size: PARTICLE_SIZE,
                 vertexColors: true,
                 blending: THREE.AdditiveBlending,
-                depthWrite: false, // Important for transparency overlap
+                depthWrite: false,
                 transparent: true,
                 opacity: 0.85
             });
 
             particleSystem = new THREE.Points(geometry, material);
             scene.add(particleSystem);
-
-            // Handle window resizing dynamically
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
@@ -192,10 +166,6 @@
             });
         }
 
-
-        // =========================================
-        // --- SHAPE GENERATION LOGIC ---
-        // =========================================
 
         async function applyShapeByIndex(index) {
             const shapeDef = shapeDefinitions[index];
@@ -208,9 +178,7 @@
             }
         }
 
-        // Helper: Generates 3D coordinates from 2D text/emojis drawn on a hidden canvas
         function calculateTextTargets(textStr) {
-             // If we've already calculated this string, use the cache
             if(textPointCache[textStr]) {
                  mapPointsToTargets(textPointCache[textStr]);
                  return Promise.resolve();
@@ -220,59 +188,46 @@
                 const canvas = document.getElementById('text_helper_canvas');
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 
-                // Canvas size determines resolution of text scanning
                 canvas.width = 400;
                 canvas.height = 200;
                 ctx.fillStyle = '#000000'; ctx.fillRect(0,0, canvas.width, canvas.height);
                 ctx.fillStyle = '#ffffff';
-                // Ensure font supports emojis. System ui fonts usually do.
                 ctx.font = 'bold 50px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(textStr, canvas.width/2, canvas.height/2);
 
                 const imageData = ctx.getImageData(0,0, canvas.width, canvas.height).data;
                 const foundPoints = [];
-
-                // Scan pixels looking for white text
-                for(let y=0; y < canvas.height; y += 2) { // step by 2 for density control
+                for(let y=0; y < canvas.height; y += 2) { 
                     for(let x=0; x < canvas.width; x += 2) {
                         const redIndex = (y * canvas.width + x) * 4;
-                        if(imageData[redIndex] > 128) { // Found a bright pixel
+                        if(imageData[redIndex] > 128) { 
                             foundPoints.push({
-                                x: (x / canvas.width - 0.5) * WORLD_SCALE * 2.5, // Scale to world space
-                                y: -(y / canvas.height - 0.5) * WORLD_SCALE * 1.2, // Flip Y axis
-                                z: (Math.random() - 0.5) * 1.5 // Add slight depth jitter
+                                x: (x / canvas.width - 0.5) * WORLD_SCALE * 2.5, 
+                                y: -(y / canvas.height - 0.5) * WORLD_SCALE * 1.2, 
+                                z: (Math.random() - 0.5) * 1.5
                             });
                         }
                     }
                 }
-                
-                textPointCache[textStr] = foundPoints; // Cache result
                 mapPointsToTargets(foundPoints);
                 resolve();
             });
         }
-        
-        // Helper: Distributes found points onto the target array
         function mapPointsToTargets(pointsArray) {
             if(pointsArray.length === 0) return;
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
-                // Modulo operator recycle points if we have more particles than text pixels
                 const pt = pointsArray[i % pointsArray.length];
                 positionsTarget[i3] = pt.x;
                 positionsTarget[i3 + 1] = pt.y;
                 positionsTarget[i3 + 2] = pt.z;
             }
         }
-
-        // Helper: Generates targets based on mathematical formulas
         function calculateMathTargets(shapeName) {
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
                 let x, y, z;
-                
-                // Normalized indices for calculations
                 const u = Math.random(); 
                 const v = Math.random();
                 const t = (i / PARTICLE_COUNT) * Math.PI * 2;
@@ -287,33 +242,30 @@
                         break;
 
                     case 'Heart':
-                        // Parametric heart equation (approximate 3D volume)
                         const rH = WORLD_SCALE * 0.09;
                         const hx = 16 * Math.pow(Math.sin(t), 3);
                         const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
                         x = hx * rH;
                         y = hy * rH;
-                        z = (Math.random() - 0.5) * WORLD_SCALE * 0.5; // Thickness
+                        z = (Math.random() - 0.5) * WORLD_SCALE * 0.5;
                         break;
 
                     case 'Rose':
-                        // Rhodonea curve (k=4 gives 8 petals) extended to 3D spiral
                         const k = 4;
-                        const thetaRose = (i / PARTICLE_COUNT) * Math.PI * 2 * 12; // *12 loops for density
+                        const thetaRose = (i / PARTICLE_COUNT) * Math.PI * 2 * 12;
                         const radiusRose = WORLD_SCALE * Math.cos(k * thetaRose);
                         x = radiusRose * Math.cos(thetaRose);
                         y = radiusRose * Math.sin(thetaRose);
-                        z = (i / PARTICLE_COUNT) * WORLD_SCALE * 2 - WORLD_SCALE; // Spiral depth
+                        z = (i / PARTICLE_COUNT) * WORLD_SCALE * 2 - WORLD_SCALE;
                         break;
 
                      case 'TorusKnot':
-                        const tk = (i / PARTICLE_COUNT) * Math.PI * 2 * 3; // loops
-                        const p=2, q=3; // knot integers
+                        const tk = (i / PARTICLE_COUNT) * Math.PI * 2 * 3;
+                        const p=2, q=3;
                         const rTk = WORLD_SCALE * 0.5 * (2 + Math.cos(q*tk));
                         x = rTk * Math.cos(p*tk);
                         y = rTk * Math.sin(p*tk);
                         z = WORLD_SCALE * 0.8 * Math.sin(q*tk);
-                        // Add volumetric noise
                         x += (Math.random()-0.5); y+= (Math.random()-0.5); z+= (Math.random()-0.5);
                         break;
                 }
@@ -322,49 +274,27 @@
                 positionsTarget[i3 + 2] = z;
             }
         }
-
-
-        // =========================================
-        // --- MAIN ANIMATION LOOP (60fps) ---
-        // =========================================
         function animate() {
             requestAnimationFrame(animate);
             const time = clock.getElapsedTime();
-
-            // 1. Apply global rotation from hand gesture
-            // Smooth Lerp towards target rotation
             particleSystem.rotation.x += (rotationTarget.y - particleSystem.rotation.x) * 0.05;
             particleSystem.rotation.y += (rotationTarget.x - particleSystem.rotation.y) * 0.05;
-
-            // 2. Process individual particles
             const positions = particleSystem.geometry.attributes.position.array;
             const colors = particleSystem.geometry.attributes.color.array;
 
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const i3 = i * 3;
 
-                // --- MORPHING LOGIC ---
-                // Get base target position
                 let tx = positionsTarget[i3];
                 let ty = positionsTarget[i3 + 1];
                 let tz = positionsTarget[i3 + 2];
-
-                // Apply expansion gesture factor
                 tx *= expansionFactor; ty *= expansionFactor; tz *= expansionFactor;
-
-                // Add organic "breathing" noise based on time and index
                 tx += Math.sin(time * 1.5 + i * 0.01) * 0.2;
                 ty += Math.cos(time * 1.7 + i * 0.012) * 0.2;
-                
-                // Linear Interpolation: Move current pos towards target pos by MORPH_SPEED percent
                 positions[i3] += (tx - positions[i3]) * MORPH_SPEED;
                 positions[i3 + 1] += (ty - positions[i3 + 1]) * MORPH_SPEED;
                 positions[i3 + 2] += (tz - positions[i3 + 2]) * MORPH_SPEED;
-
-                // --- DYNAMIC COLORING ---
-                // Color based on index + time + pinch gesture offset
                 const hue = (i / PARTICLE_COUNT * 0.3 + time * 0.05 + hueCycleOffset) % 1;
-                // Lightness boosts when hand is detected
                 const lightness = isHandDetected ? 0.6 : 0.4;
                 
                 const color = new THREE.Color();
@@ -373,18 +303,11 @@
                 colors[i3+1] = color.g;
                 colors[i3+2] = color.b;
             }
-
-            // Tell GPU update buffers
             particleSystem.geometry.attributes.position.needsUpdate = true;
             particleSystem.geometry.attributes.color.needsUpdate = true;
 
             renderer.render(scene, camera);
         }
-
-
-        // =========================================
-        // --- COMPUTER VISION (MediaPipe Hands) ---
-        // =========================================
         function initMediaPipe() {
             const videoElement = document.getElementById('input_video');
             
@@ -394,7 +317,7 @@
 
             hands.setOptions({
                 maxNumHands: 1,
-                modelComplexity: 1, // 0 = fast, 1 = accurate
+                modelComplexity: 1,
                 minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
             });
@@ -403,11 +326,10 @@
 
             const cameraUtils = new Camera(videoElement, {
                 onFrame: async () => { await hands.send({image: videoElement}); },
-                width: 640, height: 480 // Processing resolution
+                width: 640, height: 480
             });
             
             cameraUtils.start().then(() => {
-                // Camera started successfully
                 document.getElementById('cam-status').classList.add('active');
                 const loading = document.getElementById('loading-screen');
                 loading.style.opacity = 0;
@@ -426,40 +348,23 @@
                      handUi.classList.add('active');
                 }
                 
-                const lm = results.multiHandLandmarks[0]; // Get landmarks for first hand
-
-                // --- GESTURE 1: PINCH (Thumb Tip #4 vs Index Tip #8) ---
-                // Calculate Euclidean distance
+                const lm = results.multiHandLandmarks[0];
                 const pinchDist = Math.hypot(lm[8].x - lm[4].x, lm[8].y - lm[4].y);
                 const PINCH_THRESHOLD = 0.05;
 
                 if (pinchDist < PINCH_THRESHOLD) {
                     if (!pinchDebounce) {
-                        // Trigger shape switch
                         pinchDebounce = true;
                         currentShapeIndex = (currentShapeIndex + 1) % shapeDefinitions.length;
                         applyShapeByIndex(currentShapeIndex);
-                        // Visual feedback: flash color cycle
                         hueCycleOffset += 0.3;
                     }
                 } else {
-                    pinchDebounce = false; // Reset when fingers separate
+                    pinchDebounce = false;
                 }
-
-
-                // --- GESTURE 2: EXPANSION (Hand Spread) ---
-                // Measure distance from Thumb tip (#4) to Pinky tip (#20)
                 const spreadDist = Math.hypot(lm[4].x - lm[20].x, lm[4].y - lm[20].y);
-                // Map spread distance (approx 0.1 closed to 0.5 open) to expansion factor (0.5 to 2.0)
-                // Values tuned experimentally
                 expansionFactor = 0.5 + (spreadDist * 3.5);
-                expansionFactor = Math.max(0.5, Math.min(2.5, expansionFactor)); // Clamp limits
-
-
-                // --- GESTURE 3: ROTATION (Hand Position) ---
-                // Use Index Knuckle (#5) as a stable center point
-                // Map normalized coords (0 to 1) to rotation radians (-1 to 1 range)
-                // Invert X axis for intuitive control
+                expansionFactor = Math.max(0.5, Math.min(2.5, expansionFactor));
                 rotationTarget.x = -(lm[5].x - 0.5) * 3;
                 rotationTarget.y = -(lm[5].y - 0.5) * 2;
 
@@ -468,13 +373,10 @@
                 if(isHandDetected) {
                     isHandDetected = false;
                     handUi.classList.remove('active');
-                    // Reset interaction states gently
                     expansionFactor = 1.0;
                 }
             }
         }
-
-        // Start the whole process
         init();
     </script>
 </body>
